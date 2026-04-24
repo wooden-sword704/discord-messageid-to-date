@@ -46,12 +46,48 @@
       color: #4b5563;
     }
 
-    .card {
+    .card,
+    .highlight-card {
       padding: 20px;
       border-radius: 18px;
       background: #f8f9ff;
       border: 1px solid rgba(99, 102, 241, 0.12);
       margin-bottom: 18px;
+    }
+
+    .highlight-card {
+      background: linear-gradient(180deg, #eef2ff, #eef4ff);
+      box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.12);
+    }
+
+    .hero-label {
+      color: #4f46e5;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .hero-time {
+      font-size: clamp(1.8rem, 2.8vw, 3rem);
+      line-height: 1.05;
+      color: #111827;
+      margin-bottom: 10px;
+      word-break: break-word;
+    }
+
+    .hero-subtitle,
+    .hero-meta {
+      color: #475569;
+      font-size: 0.98rem;
+      margin-bottom: 6px;
+    }
+
+    .secondary {
+      margin-top: 14px;
+      width: auto;
+      padding: 12px 16px;
+      background: white;
+      color: #4f46e5;
+      border: 1px solid rgba(99, 102, 241, 0.18);
     }
 
     label {
@@ -61,7 +97,8 @@
       color: #111827;
     }
 
-    input {
+    input,
+    select {
       width: 100%;
       padding: 14px 16px;
       font-size: 1rem;
@@ -72,7 +109,8 @@
       transition: border-color 0.2s ease;
     }
 
-    input:focus {
+    input:focus,
+    select:focus {
       border-color: #6366f1;
       box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
     }
@@ -143,9 +181,31 @@
     <p>DiscordのSnowflake形式のメッセージIDを入力すると、そのIDに埋め込まれた送信日時を復元します。DiscordのSnowflakeは、先頭42ビットがUTCミリ秒タイムスタンプです。</p>
 
     <div class="card">
+      <div class="field">
+        <label for="timezone">タイムゾーン</label>
+        <select id="timezone" aria-label="表示タイムゾーン">
+          <option value="Asia/Tokyo">UTC+9 (Asia/Tokyo)</option>
+          <option value="UTC">UTC</option>
+          <option value="Europe/London">UTC+0 (Europe/London)</option>
+          <option value="Europe/Paris">UTC+1 (Europe/Paris)</option>
+          <option value="America/New_York">UTC-5 (America/New_York)</option>
+          <option value="America/Los_Angeles">UTC-8 (America/Los_Angeles)</option>
+          <option value="Asia/Seoul">UTC+9 (Asia/Seoul)</option>
+          <option value="Australia/Sydney">UTC+10 (Australia/Sydney)</option>
+          <option value="Asia/Kolkata">UTC+5:30 (Asia/Kolkata)</option>
+        </select>
+      </div>
       <label for="snowflake">メッセージID</label>
       <input id="snowflake" type="text" inputmode="numeric" placeholder="例: 123456789012345678" autocomplete="off" spellcheck="false">
       <button id="convert">日時を算出する</button>
+    </div>
+
+    <div id="highlight" class="highlight-card hidden">
+      <div class="hero-label">選択中のタイムゾーン</div>
+      <div id="heroTime" class="hero-time"></div>
+      <div id="heroZoneLabel" class="hero-subtitle"></div>
+      <div id="relative" class="hero-meta"></div>
+      <button id="copyTime" class="secondary hidden" type="button">日時をコピー</button>
     </div>
 
     <div id="output" class="card hidden">
@@ -153,23 +213,31 @@
       <div class="field"><span class="label">Discordエポック</span><span>2015-01-01 00:00:00 UTC</span></div>
       <div class="field"><span class="label">生成されたUnixミリ秒</span><span id="timestamp"></span></div>
       <div class="field"><span class="label">UTC日時</span><span id="utc"></span></div>
-      <div class="field"><span class="label">ローカル日時</span><span id="local"></span></div>
+      <div class="field"><span class="label">システムローカル日時</span><span id="local"></span></div>
       <div class="field"><span class="label">Snowflakeパーツ</span><span id="parts"></span></div>
     </div>
 
-    <p class="note">Discord Snowflake IDは64ビット整数です。上位42ビットがDiscordエポック(2015-01-01T00:00:00.000Z)からの経過ミリ秒になっています。残りはワーカーID、プロセスID、連番です。</p>
+    <p class="note">Discord Snowflake IDは64ビット整数です。上位42ビットがDiscordエポック(2015-01-01T00:00:00.000Z)からの経過ミリ秒になっています。残りはワーカーID、プロセスID、連番です。タイムゾーンはお好みで切り替えられます。</p>
   </main>
 
   <script>
     const epoch = 1420070400000n;
     const input = document.getElementById('snowflake');
     const button = document.getElementById('convert');
+    const timezoneSelect = document.getElementById('timezone');
     const output = document.getElementById('output');
+    const highlight = document.getElementById('highlight');
+    const copyButton = document.getElementById('copyTime');
     const inputValue = document.getElementById('inputValue');
     const timestampEl = document.getElementById('timestamp');
     const utcEl = document.getElementById('utc');
     const localEl = document.getElementById('local');
     const partsEl = document.getElementById('parts');
+    const heroTime = document.getElementById('heroTime');
+    const heroZoneLabel = document.getElementById('heroZoneLabel');
+    const relativeEl = document.getElementById('relative');
+    const savedTimezoneKey = 'discordMessageTimezone';
+    const defaultTimezone = 'Asia/Tokyo';
 
     function isValidSnowflake(value) {
       return /^\d{16,20}$/.test(value.trim());
@@ -180,8 +248,76 @@
     }
 
     function showError(message) {
+      highlight.classList.add('hidden');
       output.classList.add('hidden');
+      copyButton.classList.add('hidden');
       window.alert(message);
+    }
+
+    function getSelectedTimezone() {
+      return timezoneSelect.value || defaultTimezone;
+    }
+
+    function getTimeZoneOffsetLabel(date, zone) {
+      try {
+        const parts = new Intl.DateTimeFormat('ja-JP', { timeZone: zone, timeZoneName: 'shortOffset' }).formatToParts(date);
+        const namePart = parts.find((part) => part.type === 'timeZoneName');
+        return namePart ? namePart.value : '';
+      } catch {
+        return '';
+      }
+    }
+
+    function formatWithTimeZone(date, zone) {
+      return new Intl.DateTimeFormat('ja-JP', {
+        timeZone: zone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23'
+      }).format(date);
+    }
+
+    function formatRelativeTime(date) {
+      const deltaSeconds = Math.round((date.getTime() - Date.now()) / 1000);
+      const rtf = new Intl.RelativeTimeFormat('ja', { numeric: 'auto' });
+      const abs = Math.abs(deltaSeconds);
+      const units = [
+        { unit: 'day', value: 86400 },
+        { unit: 'hour', value: 3600 },
+        { unit: 'minute', value: 60 },
+        { unit: 'second', value: 1 }
+      ];
+
+      for (const { unit, value } of units) {
+        if (abs >= value || unit === 'second') {
+          return rtf.format(Math.round(deltaSeconds / value), unit);
+        }
+      }
+
+      return '';
+    }
+
+    function setSavedTimezone(zone) {
+      try {
+        window.localStorage.setItem(savedTimezoneKey, zone);
+      } catch {
+        // ignore storage errors
+      }
+    }
+
+    function loadSavedTimezone() {
+      try {
+        const stored = window.localStorage.getItem(savedTimezoneKey);
+        if (stored) {
+          timezoneSelect.value = stored;
+        }
+      } catch {
+        timezoneSelect.value = defaultTimezone;
+      }
     }
 
     function updateResult(idString) {
@@ -214,19 +350,52 @@
         const workerId = (id >> 17n) & 0x1Fn;
         const processId = (id >> 12n) & 0x1Fn;
         const increment = id & 0xFFFn;
+        const zone = getSelectedTimezone();
+        const zoneOffset = getTimeZoneOffsetLabel(date, zone);
 
         inputValue.textContent = trimmed;
         timestampEl.textContent = `${formatNumber(timestampNumber)} ms`;
         utcEl.textContent = date.toISOString().replace('T', ' ').replace('Z', ' UTC');
         localEl.textContent = date.toLocaleString();
         partsEl.textContent = `timestamp=${timestampMs} / worker=${workerId} / process=${processId} / increment=${increment}`;
+
+        heroTime.textContent = formatWithTimeZone(date, zone);
+        heroZoneLabel.textContent = zoneOffset ? `${zone} ${zoneOffset}` : zone;
+        relativeEl.textContent = formatRelativeTime(date);
+
+        highlight.classList.remove('hidden');
         output.classList.remove('hidden');
+        copyButton.classList.remove('hidden');
+        setSavedTimezone(zone);
       } catch (error) {
         showError('無効なDiscordメッセージIDです。');
       }
     }
 
+    function copyFormattedTime() {
+      const text = `${heroTime.textContent} (${heroZoneLabel.textContent})`;
+      if (!text) {
+        return;
+      }
+
+      navigator.clipboard?.writeText(text).then(() => {
+        window.alert('日時をコピーしました。');
+      }).catch(() => {
+        window.prompt('コピーに失敗しました。以下のテキストを手動でコピーしてください。', text);
+      });
+    }
+
+    loadSavedTimezone();
+
     button.addEventListener('click', () => updateResult(input.value));
+    copyButton.addEventListener('click', copyFormattedTime);
+    timezoneSelect.addEventListener('change', () => {
+      setSavedTimezone(timezoneSelect.value);
+      if (!highlight.classList.contains('hidden')) {
+        updateResult(input.value);
+      }
+    });
+
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
