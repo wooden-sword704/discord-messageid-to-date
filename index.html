@@ -1,1 +1,238 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Discord Message ID → 送信日時</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f2f5fa;
+      color: #1f2937;
+    }
 
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%);
+    }
+
+    .container {
+      width: min(100%, 720px);
+      padding: 28px;
+      border-radius: 24px;
+      background: white;
+      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(1.8rem, 2.5vw, 2.5rem);
+      line-height: 1.05;
+    }
+
+    p {
+      margin: 0 0 18px;
+      line-height: 1.75;
+      color: #4b5563;
+    }
+
+    .card {
+      padding: 20px;
+      border-radius: 18px;
+      background: #f8f9ff;
+      border: 1px solid rgba(99, 102, 241, 0.12);
+      margin-bottom: 18px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 1rem;
+      border: 1px solid #d1d5db;
+      border-radius: 14px;
+      background: white;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    input:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
+    }
+
+    button {
+      margin-top: 14px;
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 1rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 14px;
+      color: white;
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(99, 102, 241, 0.3);
+    }
+
+    .field {
+      display: grid;
+      grid-template-columns: minmax(140px, 180px) 1fr;
+      gap: 12px;
+      align-items: baseline;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .field:last-child {
+      border-bottom: none;
+    }
+
+    .label {
+      font-size: 0.95rem;
+      color: #374151;
+      font-weight: 700;
+    }
+
+    .field span:last-child {
+      color: #111827;
+      word-break: break-all;
+    }
+
+    .note {
+      margin: 0;
+      font-size: 0.95rem;
+      color: #475569;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    @media (max-width: 560px) {
+      .field {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>Discord Message ID → 送信日時</h1>
+    <p>DiscordのSnowflake形式のメッセージIDを入力すると、そのIDに埋め込まれた送信日時を復元します。DiscordのSnowflakeは、先頭42ビットがUTCミリ秒タイムスタンプです。</p>
+
+    <div class="card">
+      <label for="snowflake">メッセージID</label>
+      <input id="snowflake" type="text" inputmode="numeric" placeholder="例: 123456789012345678" autocomplete="off" spellcheck="false">
+      <button id="convert">日時を算出する</button>
+    </div>
+
+    <div id="output" class="card hidden">
+      <div class="field"><span class="label">入力されたID</span><span id="inputValue"></span></div>
+      <div class="field"><span class="label">Discordエポック</span><span>2015-01-01 00:00:00 UTC</span></div>
+      <div class="field"><span class="label">生成されたUnixミリ秒</span><span id="timestamp"></span></div>
+      <div class="field"><span class="label">UTC日時</span><span id="utc"></span></div>
+      <div class="field"><span class="label">ローカル日時</span><span id="local"></span></div>
+      <div class="field"><span class="label">Snowflakeパーツ</span><span id="parts"></span></div>
+    </div>
+
+    <p class="note">Discord Snowflake IDは64ビット整数です。上位42ビットがDiscordエポック(2015-01-01T00:00:00.000Z)からの経過ミリ秒になっています。残りはワーカーID、プロセスID、連番です。</p>
+  </main>
+
+  <script>
+    const epoch = 1420070400000n;
+    const input = document.getElementById('snowflake');
+    const button = document.getElementById('convert');
+    const output = document.getElementById('output');
+    const inputValue = document.getElementById('inputValue');
+    const timestampEl = document.getElementById('timestamp');
+    const utcEl = document.getElementById('utc');
+    const localEl = document.getElementById('local');
+    const partsEl = document.getElementById('parts');
+
+    function isValidSnowflake(value) {
+      return /^\d{16,20}$/.test(value.trim());
+    }
+
+    function formatNumber(value) {
+      return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+
+    function showError(message) {
+      output.classList.add('hidden');
+      window.alert(message);
+    }
+
+    function updateResult(idString) {
+      try {
+        const trimmed = idString.trim();
+        if (!isValidSnowflake(trimmed)) {
+          showError('16〜20桁の数字でDiscordメッセージIDを入力してください。');
+          return;
+        }
+
+        const id = BigInt(trimmed);
+        if (id < 0n) {
+          showError('IDは正の整数である必要があります。');
+          return;
+        }
+
+        const timestampMs = (id >> 22n) + epoch;
+        const timestampNumber = Number(timestampMs);
+        if (!Number.isFinite(timestampNumber)) {
+          showError('IDから日時を構成できませんでした。');
+          return;
+        }
+
+        const date = new Date(timestampNumber);
+        if (Number.isNaN(date.getTime())) {
+          showError('無効な日時が生成されました。');
+          return;
+        }
+
+        const workerId = (id >> 17n) & 0x1Fn;
+        const processId = (id >> 12n) & 0x1Fn;
+        const increment = id & 0xFFFn;
+
+        inputValue.textContent = trimmed;
+        timestampEl.textContent = `${formatNumber(timestampNumber)} ms`;
+        utcEl.textContent = date.toISOString().replace('T', ' ').replace('Z', ' UTC');
+        localEl.textContent = date.toLocaleString();
+        partsEl.textContent = `timestamp=${timestampMs} / worker=${workerId} / process=${processId} / increment=${increment}`;
+        output.classList.remove('hidden');
+      } catch (error) {
+        showError('無効なDiscordメッセージIDです。');
+      }
+    }
+
+    button.addEventListener('click', () => updateResult(input.value));
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        button.click();
+      }
+    });
+  </script>
+</body>
+</html>
